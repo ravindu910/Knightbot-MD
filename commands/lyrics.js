@@ -1,52 +1,42 @@
 const fetch = require('node-fetch');
-require('../config.js');
 
-async function lyricsCommand(sock, chatId, songTitle) {
+async function lyricsCommand(sock, chatId, songTitle, message) {
     if (!songTitle) {
         await sock.sendMessage(chatId, { 
-            text: '❌ Please provide a song title!' 
-        });
+            text: '🔍 Please enter the song name to get the lyrics! Usage: *lyrics <song name>*'
+        },{ quoted: message });
         return;
     }
 
     try {
-        // Using xteam API instead of lolhuman
-        const apiUrl = `${global.APIs.xteam}/api/lirik?q=${encodeURIComponent(songTitle)}&apikey=${global.APIKeys['https://api.xteam.xyz']}`;
-        
+        // Use lyricsapi.fly.dev and return only the raw lyrics text
+        const apiUrl = `https://lyricsapi.fly.dev/api/lyrics?q=${encodeURIComponent(songTitle)}`;
         const res = await fetch(apiUrl);
-        const json = await res.json();
         
-        if (!json.result) {
-            await sock.sendMessage(chatId, { 
-                text: '❌ Lyrics not found for this song!' 
-            });
+        if (!res.ok) {
+            const errText = await res.text();
+            throw errText;
+        }
+        
+        const data = await res.json();
+
+        const lyrics = data && data.result && data.result.lyrics ? data.result.lyrics : null;
+        if (!lyrics) {
+            await sock.sendMessage(chatId, {
+                text: `❌ Sorry, I couldn't find any lyrics for "${songTitle}".`
+            },{ quoted: message });
             return;
         }
 
-        const lyricsText = `*🎵 ${songTitle}*
+        const maxChars = 4096;
+        const output = lyrics.length > maxChars ? lyrics.slice(0, maxChars - 3) + '...' : lyrics;
 
-${json.result}
-
-_Powered by XTeam API_`;
-
-        await sock.sendMessage(chatId, {
-            text: lyricsText,
-            contextInfo: {
-                forwardingScore: 999,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363161513685998@newsletter',
-                    newsletterName: 'KnightBot MD',
-                    serverMessageId: -1
-                }
-            }
-        });
-
+        await sock.sendMessage(chatId, { text: output }, { quoted: message });
     } catch (error) {
         console.error('Error in lyrics command:', error);
         await sock.sendMessage(chatId, { 
-            text: '❌ The lyrics service is currently unavailable. Please try again later.' 
-        });
+            text: `❌ An error occurred while fetching the lyrics for "${songTitle}".`
+        },{ quoted: message });
     }
 }
 
